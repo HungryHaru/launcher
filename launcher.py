@@ -4,10 +4,10 @@ from tkinterdnd2 import *
 import subprocess
 import webbrowser
 import os
-import sys
 import urllib.request
 import ssl
 import tkinter.simpledialog as simpledialog
+import tkinter.messagebox as messagebox
 
 class Launcher:
 
@@ -22,6 +22,7 @@ class Launcher:
 
     def main(self):
         global nb
+        global root
         # ウィンドウ設定
         root = TkinterDnD.Tk()
         root.title("Launcher")
@@ -67,6 +68,35 @@ class Launcher:
             cls.create_button(label, link_dict, not_link_dict)
 
     @classmethod
+    def create_label(cls, tab):
+        # ラベル作成
+        global nb
+
+        # labelにスクロールが付けれないため、スクロールを紐づけられるcavasを作成
+        canvas = tk.Canvas(tab, width=200, relief=tk.RIDGE, cursor="hand2")
+        # スクロールバーの作成
+        scrollbar = tk.Scrollbar(canvas, orient=tk.VERTICAL, command=canvas.yview)
+        # Canvasのスクロール範囲を設定
+        canvas.configure(scrollregion=(0, 0, 300, 1000))
+        canvas.configure(yscrollcommand=scrollbar.set)
+        # 表示
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(expand=True, fill=tk.BOTH)
+
+        frame=tk.Frame(canvas)
+        # Canvas上の座標(0, 0)に対してFrameの左上（nw=north-west）をあてがうように、Frameを埋め込む
+        canvas.create_window((0, 0), window=frame, anchor="nw", width=300, height=1000)
+
+        label = ttk.Label(frame, text=nb.tab(tab, "text"), width=200, relief=tk.RIDGE, cursor="hand2")
+        label.drop_target_register(DND_FILES)
+        # drop_pathメソッドとラベルを紐づけ
+        label.dnd_bind("<<Drop>>", cls.drop_path)
+        # ラベルとメニューを紐づけ
+        cls.link_label_and_menu(label)
+
+        return label
+
+    @classmethod
     def create_button(cls, label, link_dict, not_link_dict):
         # link
         row = 0
@@ -91,70 +121,24 @@ class Launcher:
             col += 1
 
     @classmethod
-    def read_file(cls, file_path):
-        # ファイル読み込み
+    def create_link_button(cls, label, button_name, url, row, col):
+        # ボタン作成
+        button = tk.Button(label, text=button_name,
+                        command=lambda: cls.jump_to_link(url), width=20, relief="raised")
+        button.grid(column=col, row=row)
 
-        link_dict = {}
-        not_link_dict = {}
-
-        f = open(file_path, 'r', encoding='utf-8')
-        while True:
-            data = f.readline().rstrip('\n')
-            if data == '':
-                break
-
-            data_list = data.split(',')
-            name = data_list[0]
-            path = data_list[1]
-
-            # パスがリンクかを判定
-            is_link = cls.check_url(path)
-
-            if is_link:
-                link_dict[name] = path
-            else:
-                not_link_dict[name] = path
-
-        return link_dict, not_link_dict
+        # ボタンとメニューの紐づけ
+        cls.link_button_and_menu(button)
 
     @classmethod
-    def check_url(cls, path):
-        # パスがリンクかを判定
-        is_link = True
-        try:
-            f = urllib.request.urlopen(path)
-            f.close()
-        except Exception as e:
-            is_link = False
+    def create_not_link_button(cls, label, button_name, path, row, col):
+        # ボタン作成
+        button = tk.Button(label, text=button_name,
+                        command=lambda: cls.open_path(path), width=20, relief="raised")
+        button.grid(column=col, row=row)
 
-        return is_link
-
-    @classmethod
-    def create_label(cls, tab):
-        # ラベル作成
-        global nb
-
-        # labelにスクロールが付けれないため、スクロールを紐づけられるcavasを作成
-        canvas = tk.Canvas(tab, width=200, relief=tk.RIDGE, cursor="hand2")
-        # スクロールバーの作成
-        scrollbar = tk.Scrollbar(canvas, orient=tk.VERTICAL, command=canvas.yview)
-        # Canvasのスクロール範囲を設定
-        canvas.configure(scrollregion=(0, 0, 300, 1000))
-        canvas.configure(yscrollcommand=scrollbar.set)
-        # 表示
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(expand=True, fill=tk.BOTH)
-
-        frame=tk.Frame(canvas)
-        # Canvas上の座標(0, 0)に対してFrameの左上（nw=north-west）をあてがうように、Frameを埋め込む
-        canvas.create_window((0, 0), window=frame, anchor="nw", width=300, height=1000)
-
-        label = ttk.Label(frame, text=nb.tab(tab, "text"), width=200, relief=tk.RIDGE, cursor="hand2")
-        label.drop_target_register(DND_FILES)
-        # drop_pathメソッドとラベルを紐づけ
-        label.dnd_bind("<<Drop>>", cls.drop_path)
-
-        return label
+        # ボタンとメニューの紐づけ
+        cls.link_button_and_menu(button)
 
     @classmethod
     def drop_path(cls, event):
@@ -174,13 +158,7 @@ class Launcher:
         file_path = f"{tab_name}.txt"
         link_dict, not_link_dict=cls.read_file(file_path)
 
-        # パスがリンクかを判定
-        is_link = cls.check_url(path)
-
-        if is_link:
-            link_dict[input_data] = path
-        else:
-            not_link_dict[input_data] = path
+        not_link_dict[input_data] = path
 
         # ファイル書き込み
         cls.write_file(file_path, link_dict, not_link_dict)
@@ -192,44 +170,16 @@ class Launcher:
         cls.create_tab(cls.TEXT_FILE_NAME_LIST)
 
     @classmethod
-    def write_file(cls, file_path, link_dict, not_link_dict):
-        # ファイル書き込み
-        write_list=[]
-
-        for name, url in link_dict.items():
-            row = name + ',' + url
-            write_list.append(row)
-
-        for name, path in not_link_dict.items():
-            row = name + ',' + path
-            write_list.append(row)
-
-        file_path = './' + file_path
-
-        with open(file_path, mode='w',encoding='utf-8')as f:
-            f.write('\n'.join(write_list))
-
-    @classmethod
-    def create_link_button(cls, label, button_name, url, row, col):
-        # ボタン作成
-        button = tk.Button(label, text=button_name,
-                        command=lambda: cls.jump_to_link(url), width=20, relief="raised")
-        button.grid(column=col, row=row)
-
-        # ボタンとメニューの紐づけ
-        cls.link_button_and_menu(button)
-
-    @classmethod
     def link_button_and_menu(cls, button):
         global pmenu
         pmenu=tk.Menu(button, tearoff=0)
         pmenu.add_command(label="ボタン名変更", command=cls.change_button_name)
         pmenu.add_command(label="ボタン削除", command=cls.delete_button)
         # 右クリックでメニュー表示
-        button.bind("<Button-3>", cls.show_menu)
+        button.bind("<Button-3>", cls.show_button_menu)
 
     @classmethod
-    def show_menu(cls, e):
+    def show_button_menu(cls, e):
         global select_button
         global pmenu
         select_button=e.widget.cget("text")
@@ -322,14 +272,133 @@ class Launcher:
         cls.create_tab(cls.TEXT_FILE_NAME_LIST)
 
     @classmethod
-    def create_not_link_button(cls, label, button_name, path, row, col):
-        # ボタン作成
-        button = tk.Button(label, text=button_name,
-                        command=lambda: cls.open_path(path), width=20, relief="raised")
-        button.grid(column=col, row=row)
+    def link_label_and_menu(cls, label):
+        global label_menu
+        label_menu=tk.Menu(label, tearoff=0)
+        label_menu.add_command(label="リンク登録", command=cls.show_link_dialog)
+        # 右クリックでメニュー表示
+        label.bind("<Button-3>", cls.show_label_menu)
 
-        # ボタンとメニューの紐づけ
-        cls.link_button_and_menu(button)
+    @classmethod
+    def show_label_menu(cls, e):
+        global label_menu
+        label_menu.post(e.x_root, e.y_root)
+
+    @classmethod
+    def show_link_dialog(cls):
+        # サブウインドウの作成
+        global root
+        global sub_window
+        sub_window = tk.Toplevel(root)
+        sub_window.geometry("300x100")
+
+        input_link_name_label = tk.Label(sub_window, text='リンク名：')
+        input_link_name_label.place(x=20, y=20)
+
+        input_link_name = tk.Entry(sub_window, width=30)
+        input_link_name.place(x=80, y=20)
+
+        input_url_label = tk.Label(sub_window, text='url        ：')
+        input_url_label.place(x=20, y=50)
+
+        input_url = tk.Entry(sub_window, width=30)
+        input_url.place(x=80, y=50)
+
+        button = tk.Button(sub_window, text='登録', command=lambda: cls.register_link(input_link_name, input_url))
+        button.place(x=140, y=70)
+
+    @classmethod
+    def register_link(cls, input_link_name, input_url):
+        global nb
+        global tab_list
+        global sub_window
+
+        link_name = input_link_name.get()
+        url = input_url.get()
+
+        # タブ名取得
+        tab_name = nb.tab(nb.select(), "text")
+
+        # ファイル読み込み
+        file_path = f"{tab_name}.txt"
+        link_dict, not_link_dict=cls.read_file(file_path)
+
+        # リンク判定
+        is_link = cls.check_url(url)
+
+        if is_link:
+            link_dict[link_name] = url
+        else:
+            messagebox.showerror("エラー", "リンクが有効ではありません")
+
+        # ファイル書き込み
+        cls.write_file(file_path, link_dict, not_link_dict)
+
+        # 現在のタブ削除
+        for tab in tab_list:
+            nb.forget(tab)
+        # タブから再作成
+        cls.create_tab(cls.TEXT_FILE_NAME_LIST)
+
+        # サブウィンドウを閉じる
+        sub_window.destroy()
+
+    @classmethod
+    def read_file(cls, file_path):
+        # ファイル読み込み
+
+        link_dict = {}
+        not_link_dict = {}
+
+        f = open(file_path, 'r', encoding='utf-8')
+        while True:
+            data = f.readline().rstrip('\n')
+            if data == '':
+                break
+
+            data_list = data.split(',')
+            key = data_list[0]
+            value = data_list[1]
+
+            # パスがリンクかを判定
+            is_link = cls.check_url(value)
+
+            if is_link:
+                link_dict[key] = value
+            else:
+                not_link_dict[key] = value
+
+        return link_dict, not_link_dict
+
+    @classmethod
+    def write_file(cls, file_path, link_dict, not_link_dict):
+        # ファイル書き込み
+        write_list=[]
+
+        for name, url in link_dict.items():
+            row = name + ',' + url
+            write_list.append(row)
+
+        for name, path in not_link_dict.items():
+            row = name + ',' + path
+            write_list.append(row)
+
+        file_path = './' + file_path
+
+        with open(file_path, mode='w',encoding='utf-8')as f:
+            f.write('\n'.join(write_list))
+
+    @classmethod
+    def check_url(cls, url):
+        # urlのリンクが有効か判定
+        is_link = True
+        try:
+            f = urllib.request.urlopen(url)
+            f.close()
+        except Exception as e:
+            is_link = False
+
+        return is_link
 
     @classmethod
     def jump_to_link(cls, url):
