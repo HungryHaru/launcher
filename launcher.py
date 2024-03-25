@@ -205,18 +205,19 @@ class Launcher:
 
     @classmethod
     def link_button_and_menu(cls, button):
-        global pmenu
-        pmenu=tk.Menu(button, tearoff=0)
-        pmenu.add_command(label="ボタン名変更", command=cls.change_button_name)
-        pmenu.add_command(label="ボタン削除", command=cls.delete_button)
         # 右クリックでメニュー表示
         button.bind("<Button-3>", cls.show_button_menu)
 
     @classmethod
     def show_button_menu(cls, e):
         global select_button
-        global pmenu
-        select_button=e.widget.cget("text")
+        select_button = e.widget.cget("text")
+
+        # メニューの作成
+        pmenu = tk.Menu(e.widget, tearoff=0)
+        pmenu.add_command(label="ボタン名変更", command=cls.change_button_name)
+        pmenu.add_command(label="ボタン削除", command=lambda: cls.delete_button(e.widget))  # ボタンを引数として渡す
+
         pmenu.post(e.x_root, e.y_root)
 
     @classmethod
@@ -282,27 +283,12 @@ class Launcher:
         return new_dict
 
     @classmethod
-    def delete_button(cls):
+    def delete_button(cls, button):
         global nb
         global select_button
 
-        # 選択されたタブを取得
-        frame_id = nb.select()
-        selected_frame = nb.nametowidget(frame_id)
-        canvases = selected_frame.winfo_children()
-        frames = canvases[0].winfo_children()
-        labels = frames[1].winfo_children()
-        buttons = labels[0].winfo_children()
-        buttons.pop(0)
-
         # ボタン削除
-        for i, button in enumerate(buttons):
-            if button.cget("text") == select_button:
-                button.destroy()
-                del buttons[i]
-
-        # ボタン再配置
-        cls.rearrange_buttons(buttons)
+        button.destroy()
 
         # タブ名取得
         tab_name = nb.tab(nb.select(), "text")
@@ -323,6 +309,18 @@ class Launcher:
 
         # ファイル書き込み
         cls.write_file(file_path, link_dict, not_link_dict)
+
+        # 選択されたタブを取得
+        frame_id = nb.select()
+        selected_frame = nb.nametowidget(frame_id)
+        canvases = selected_frame.winfo_children()
+        frames = canvases[0].winfo_children()
+        labels = frames[1].winfo_children()
+        buttons = labels[0].winfo_children()
+        buttons.pop(0)
+
+        # ボタン再配置
+        cls.rearrange_buttons(buttons)
 
     @classmethod
     def rearrange_buttons(cls, buttons):
